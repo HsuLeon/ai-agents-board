@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id                 String             @id @default(cuid())
+  name               String
+  provider           String
+  status             String             @default("active")
+  maxConcurrentTasks Int                @default(1)
+  notes              String?
+  apiTokenHash       String?
+  tokenLastUsedAt    DateTime?
+  roles              AgentRoleRecord[]
+  capabilities       AgentCapability[]
+  ownedTasks         Task[]             @relation("CurrentOwner")
+  comments           TaskComment[]
+  leases             TaskLease[]
+  artifacts          TaskArtifact[]
+  progressReports    ProgressReport[]
+  qaReports          QaReport[]
+  acceptanceReports  AcceptanceReport[]
+  events             AgentEvent[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model AgentEvent {
+  id             String    @id @default(cuid())
+  type           String
+  targetAgentId  String?
+  targetRole     String?
+  taskId         String?
+  questionId     String?
+  reason         String?
+  payload        String    @default("{}")
+  publishStatus  String    @default("pending")
+  publishMessage String?
+  publishedAt    DateTime?
+  acknowledgedAt DateTime?
+  createdAt      DateTime  @default(now())
+  targetAgent    Agent?    @relation(fields: [targetAgentId], references: [id], onDelete: Cascade)
+}
+
+model AgentRoleRecord {
+  id      String @id @default(cuid())
+  agentId String
+  role    String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, role])
+}
+
+model AgentCapability {
+  id         String @id @default(cuid())
+  agentId    String
+  capability String
+  agent      Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, capability])
+}
+
+model Task {
+  id                  String               @id @default(cuid())
+  title               String
+  status              String               @default("planning")
+  priority            Int                  @default(50)
+  currentOwnerAgentId String?
+  currentOwnerRole    String?
+  previousStatus      String?
+  currentOwner        Agent?               @relation("CurrentOwner", fields: [currentOwnerAgentId], references: [id])
+  context             TaskContext?
+  acceptanceCriteria  AcceptanceCriteria[]
+  questions           TaskQuestion[]
+  decisions           TaskDecision[]
+  comments            TaskComment[]
+  leases              TaskLease[]
+  transitions         TaskTransition[]
+  artifacts           TaskArtifact[]
+  progressReports     ProgressReport[]
+  qaReports           QaReport[]
+  acceptanceReports   AcceptanceReport[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model TaskContext {
+  taskId       String @id
+  goal         String
+  background   String
+  requirements String @default("[]")
+  constraints  String @default("[]")
+  handoffNotes String @default("[]")
+  task         Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model AcceptanceCriteria {
+  id          String  @id @default(cuid())
+  taskId      String
+  description String
+  checked     Boolean @default(false)
+  task        Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TaskQuestion {
+  id             String    @id @default(cuid())
+  taskId         String
+  askedByAgentId String?
+  targetRole     String?
+  targetAgentId  String?
+  question       String
+  status         String    @default("open")
+  answer         String?
+  answeredByAgentId String?
+  createdAt      DateTime  @default(now())
+  answeredAt     DateTime?
+  resolvedAt     DateTime?
+  task           Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TaskDecision {
+  id        String   @id @default(cuid())
+  taskId    String
+  decision  String
+  decidedBy String
+  source    String?
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TaskComment {
+  id            String   @id @default(cuid())
+  taskId        String
+  authorType    String
+  authorAgentId String?
+  body          String
+  createdAt     DateTime @default(now())
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorAgent   Agent?   @relation(fields: [authorAgentId], references: [id])
+}
+
+model TaskLease {
+  id              String    @id @default(cuid())
+  taskId          String
+  agentId         String
+  status          String
+  leaseUntil      DateTime?
+  lastHeartbeatAt DateTime?
+  attempt         Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agent           Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model TaskTransition {
+  id               String   @id @default(cuid())
+  taskId           String
+  fromStatus       String?
+  toStatus         String
+  reason           String?
+  requestedChanges String?
+  actorType        String
+  actorAgentId     String?
+  createdAt        DateTime @default(now())
+  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TaskArtifact {
+  id               String   @id @default(cuid())
+  taskId           String
+  createdByAgentId String?
+  type             String
+  title            String
+  content          String   @default("{}")
+  url              String?
+  createdAt        DateTime @default(now())
+  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdByAgent   Agent?   @relation(fields: [createdByAgentId], references: [id])
+}
+
+model ProgressReport {
+  id                    String   @id @default(cuid())
+  taskId                String
+  agentId               String
+  workerStatus          String
+  summary               String
+  nextAction            String?
+  needsResponse         Boolean  @default(false)
+  expectedResponderRole String?
+  handoffReady          Boolean  @default(false)
+  continuationPrompt    String?
+  createdAt             DateTime @default(now())
+  task                  Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agent                 Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model QaReport {
+  id             String   @id @default(cuid())
+  taskId         String
+  agentId        String?
+  summary        String
+  checkedItems   String   @default("[]")
+  commandsRun    String   @default("[]")
+  issuesFound    String   @default("[]")
+  recommendation String
+  createdAt      DateTime @default(now())
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agent          Agent?   @relation(fields: [agentId], references: [id])
+}
+
+model AcceptanceReport {
+  id        String   @id @default(cuid())
+  taskId    String
+  agentId   String?
+  summary   String
+  decision  String
+  reason    String?
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agent     Agent?   @relation(fields: [agentId], references: [id])
+}
